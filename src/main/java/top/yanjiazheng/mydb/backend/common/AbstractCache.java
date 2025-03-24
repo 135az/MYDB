@@ -27,11 +27,18 @@ public abstract class AbstractCache<T> {
         lock = new ReentrantLock();
     }
 
+    /**
+     * 根据键获取缓存对象如果对象不在缓存中，则尝试从资源中获取并放入缓存
+     * 
+     * @param key 要获取的对象的键
+     * @return 对应键的缓存对象
+     * @throws Exception 如果获取对象时发生错误
+     */
     protected T get(long key) throws Exception {
         while(true) {
             lock.lock();
             if(getting.containsKey(key)) {
-                // 请求的资源正在被其他线程获取
+                // 如果其他线程正在获取这个资源，那么当前线程将等待一毫秒然后继续循环
                 lock.unlock();
                 try {
                     Thread.sleep(1);
@@ -41,7 +48,7 @@ public abstract class AbstractCache<T> {
                 }
                 continue;
             }
-
+    
             if(cache.containsKey(key)) {
                 // 资源在缓存中，直接返回
                 T obj = cache.get(key);
@@ -49,7 +56,7 @@ public abstract class AbstractCache<T> {
                 lock.unlock();
                 return obj;
             }
-
+    
             // 尝试获取该资源
             if(maxResource > 0 && count == maxResource) {
                 lock.unlock();
@@ -60,7 +67,7 @@ public abstract class AbstractCache<T> {
             lock.unlock();
             break;
         }
-
+    
         T obj = null;
         try {
             obj = getForCache(key);
@@ -71,7 +78,7 @@ public abstract class AbstractCache<T> {
             lock.unlock();
             throw e;
         }
-
+    
         lock.lock();
         getting.remove(key);
         cache.put(key, obj);
