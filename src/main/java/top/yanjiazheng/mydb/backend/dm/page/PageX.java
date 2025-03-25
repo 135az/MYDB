@@ -36,12 +36,29 @@ public class PageX {
         return Parser.parseShort(Arrays.copyOfRange(raw, 0, 2));
     }
 
-    // 将raw插入pg中，返回插入位置
+    /**
+     * 将原始字节数组插入到指定页面中，并返回插入的位置
+     * 此方法首先将页面标记为已修改，然后找到页面中自由空间的起始点（FSO）
+     * 接着将原始字节数组复制到页面数据的自由空间中，并更新自由空间的起始点位置
+     * 
+     * @param pg 要插入数据的目标页面，此页面会被修改
+     * @param raw 要插入的原始字节数组
+     * @return 返回插入操作开始的位置，即原始数据在页面中的起始偏移量
+     */
     public static short insert(Page pg, byte[] raw) {
+        // 将页面标记为已修改，表示页面数据已变更
         pg.setDirty(true);
+        
+        // 获取页面中自由空间的起始偏移量
         short offset = getFSO(pg.getData());
+        
+        // 将原始字节数组复制到页面数据的自由空间中
         System.arraycopy(raw, 0, pg.getData(), offset, raw.length);
+        
+        // 更新自由空间起始点位置，为下一次插入操作做准备
         setFSO(pg.getData(), (short)(offset + raw.length));
+        
+        // 返回插入操作的起始位置
         return offset;
     }
 

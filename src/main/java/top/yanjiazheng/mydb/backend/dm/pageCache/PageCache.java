@@ -11,7 +11,7 @@ import top.yanjiazheng.mydb.common.Error;
 
 public interface PageCache {
     
-    public static final int PAGE_SIZE = 1 << 13;
+    int PAGE_SIZE = 1 << 13;
 
     int newPage(byte[] initData);
     Page getPage(int pgno) throws Exception;
