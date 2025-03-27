@@ -27,6 +27,7 @@ public class PageOne {
     }
 
     private static void setVcOpen(byte[] raw) {
+        // 随机生成8字节的数据，并拷贝到第一页的 100~107 字节
         System.arraycopy(RandomUtil.randomBytes(LEN_VC), 0, raw, OF_VC, LEN_VC);
     }
 

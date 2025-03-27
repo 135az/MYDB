@@ -38,9 +38,13 @@ public interface DataItem {
 
     // 从页面的offset处解析处dataitem
     static DataItem parseDataItem(Page pg, short offset, DataManagerImpl dm) {
+        // 读取 pg.getData() 获取整个页面的字节数组 raw
         byte[] raw = pg.getData();
+        // 解析 size（数据大小），从 raw[offset + OF_SIZE] 开始读取 2 个字节，转换为 short 类型
         short size = Parser.parseShort(Arrays.copyOfRange(raw, offset+DataItemImpl.OF_SIZE, offset+DataItemImpl.OF_DATA));
+        // 计算 length，即 DataItem 的总长度（包含元信息）
         short length = (short)(size + DataItemImpl.OF_DATA);
+        // 计算 uid，调用 Types.addressToUid(pg.getPageNumber(), offset)，根据页面编号和偏移量生成全局唯一标识符。
         long uid = Types.addressToUid(pg.getPageNumber(), offset);
         return new DataItemImpl(new SubArray(raw, offset, offset+length), new byte[length], pg, uid, dm);
     }

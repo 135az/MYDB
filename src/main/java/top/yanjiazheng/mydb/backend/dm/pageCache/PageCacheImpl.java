@@ -43,6 +43,7 @@ public class PageCacheImpl extends AbstractCache<Page> implements PageCache {
     }
 
     public int newPage(byte[] initData) {
+        // 获取新的页号
         int pgno = pageNumbers.incrementAndGet();
         Page pg = new PageImpl(pgno, initData, null);
         flush(pg);
@@ -58,12 +59,14 @@ public class PageCacheImpl extends AbstractCache<Page> implements PageCache {
      */
     @Override
     protected Page getForCache(long key) throws Exception {
+        // 计算页号对应的文件偏移量。
         int pgno = (int)key;
         long offset = PageCacheImpl.pageOffset(pgno);
-
+         // 分配一个大小为PAGE_SIZE的ByteBuffer
         ByteBuffer buf = ByteBuffer.allocate(PAGE_SIZE);
         fileLock.lock();
         try {
+            // 设置文件通道的位置为计算出的偏移量
             fc.position(offset);
             fc.read(buf);
         } catch(IOException e) {
@@ -90,6 +93,7 @@ public class PageCacheImpl extends AbstractCache<Page> implements PageCache {
     }
 
     private void flush(Page pg) {
+        // 计算 Page 的偏移量
         int pgno = pg.getPageNumber();
         long offset = pageOffset(pgno);
 

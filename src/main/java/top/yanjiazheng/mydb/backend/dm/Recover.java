@@ -108,7 +108,6 @@ public class Recover {
         while(true) {
             // 读取下一条日志
             byte[] log = lg.next();
-            
             // 如果没有更多日志，则退出循环
             if(log == null) break;
             
@@ -117,17 +116,16 @@ public class Recover {
                 // 解析插入日志信息
                 InsertLogInfo li = parseInsertLog(log);
                 long xid = li.xid;
-                
-                // 如果事务不再处于活动状态，则执行插入日志
+                // 如果当前事务已经提交，进行重做操作
                 if(!tm.isActive(xid)) {
                     doInsertLog(pc, log, REDO);
                 }
             } else {
-                // 解析更新日志信息
+                // 如果是更新日志，解析日志记录，获取更新日志信息
                 UpdateLogInfo xi = parseUpdateLog(log);
                 long xid = xi.xid;
                 
-                // 如果事务不再处于活动状态，则执行更新日志
+                // 如果当前事务已经提交，进行重做操作
                 if(!tm.isActive(xid)) {
                     doUpdateLog(pc, log, REDO);
                 }
@@ -205,53 +203,103 @@ public class Recover {
     private static final int OF_UPDATE_UID = OF_XID+8;
     private static final int OF_UPDATE_RAW = OF_UPDATE_UID+8;
 
+    /**
+     * 生成一个更新日志条目
+     * 该方法用于创建一个更新操作的日志记录，其中包括事务ID、数据项的唯一标识、旧值和新值
+     * 
+     * @param xid 事务的唯一标识符
+     * @param di 被更新的数据项
+     * @return 返回一个字节数组，包含更新日志的所有必要信息
+     */
     public static byte[] updateLog(long xid, DataItem di) {
+        // 定义更新日志的类型
         byte[] logType = {LOG_TYPE_UPDATE};
+        // 将事务ID转换为字节数组
         byte[] xidRaw = Parser.long2Byte(xid);
+        // 将数据项的唯一标识转换为字节数组
         byte[] uidRaw = Parser.long2Byte(di.getUid());
+        // 获取数据项的旧值
         byte[] oldRaw = di.getOldRaw();
+        // 获取数据项的新值
         SubArray raw = di.getRaw();
         byte[] newRaw = Arrays.copyOfRange(raw.raw, raw.start, raw.end);
+        // 将所有部分合并成一个完整的日志条目
         return Bytes.concat(logType, xidRaw, uidRaw, oldRaw, newRaw);
     }
 
+    /**
+     * 解析更新日志
+     * 该方法负责解析给定的字节数组形式的更新日志，并将其映射到UpdateLogInfo对象中
+     * 它提取日志中的xid（事务ID）、offset（偏移量）、pgno（页面编号）以及oldRaw和newRaw（旧数据和新数据）
+     * 
+     * @param log 字节数组，包含更新日志的信息
+     * @return 解析后的UpdateLogInfo对象，包含提取的信息
+     */
     private static UpdateLogInfo parseUpdateLog(byte[] log) {
+        // 创建一个新的UpdateLogInfo对象来存储解析后的信息
         UpdateLogInfo li = new UpdateLogInfo();
+        
+        // 从日志中提取xid（事务ID）
         li.xid = Parser.parseLong(Arrays.copyOfRange(log, OF_XID, OF_UPDATE_UID));
+        
+        // 从日志中提取uid，并进一步解析出offset（偏移量）和pgno（页面编号）
         long uid = Parser.parseLong(Arrays.copyOfRange(log, OF_UPDATE_UID, OF_UPDATE_RAW));
         li.offset = (short)(uid & ((1L << 16) - 1));
         uid >>>= 32;
         li.pgno = (int)(uid & ((1L << 32) - 1));
+        
+        // 计算oldRaw和newRaw的长度，并据此从日志中提取oldRaw和newRaw
         int length = (log.length - OF_UPDATE_RAW) / 2;
         li.oldRaw = Arrays.copyOfRange(log, OF_UPDATE_RAW, OF_UPDATE_RAW+length);
         li.newRaw = Arrays.copyOfRange(log, OF_UPDATE_RAW+length, OF_UPDATE_RAW+length*2);
+        
+        // 返回填充完毕的UpdateLogInfo对象
         return li;
     }
 
+    /**
+     * 执行更新日志操作
+     * 根据提供的日志和标志，恢复或重做页面上的更新操作
+     * 
+     * @param pc 页缓存对象，用于访问和管理页面
+     * @param log 更新日志数组，包含恢复或重做所需的信息
+     * @param flag 标志位，指示是重做（REDO）还是回滚（UNDO）操作
+     */
     private static void doUpdateLog(PageCache pc, byte[] log, int flag) {
+        // 定义页面编号和偏移量变量
         int pgno;
         short offset;
         byte[] raw;
+        
+        // 根据标志位决定是重做还是回滚操作
         if(flag == REDO) {
+            // 解析更新日志，获取页面编号、偏移量和新的数据
             UpdateLogInfo xi = parseUpdateLog(log);
             pgno = xi.pgno;
             offset = xi.offset;
             raw = xi.newRaw;
         } else {
+            // 解析更新日志，获取页面编号、偏移量和旧的数据
             UpdateLogInfo xi = parseUpdateLog(log);
             pgno = xi.pgno;
             offset = xi.offset;
             raw = xi.oldRaw;
         }
+        
+        // 初始化页面对象
         Page pg = null;
         try {
+            // 从页缓存中获取指定编号的页面
             pg = pc.getPage(pgno);
         } catch (Exception e) {
             Panic.panic(e);
         }
+        
+        // 执行页面更新恢复操作
         try {
             PageX.recoverUpdate(pg, raw, offset);
         } finally {
+            // 释放页面资源，确保页面状态被正确更新
             pg.release();
         }
     }
@@ -261,37 +309,81 @@ public class Recover {
     private static final int OF_INSERT_OFFSET = OF_INSERT_PGNO+4;
     private static final int OF_INSERT_RAW = OF_INSERT_OFFSET+2;
 
+    /**
+     * 创建插入日志
+     * 该方法用于生成数据库操作中的插入日志，将操作信息序列化为字节数组，以便后续的重做日志应用
+     * 
+     * @param xid 事务ID，唯一标识一个事务
+     * @param pg 页面对象，表示数据库中的一个数据页
+     * @param raw 插入数据的原始字节数组，包含要插入的数据信息
+     * @return 返回拼接后的日志字节数组，包含日志类型、事务ID、页号、偏移量和原始数据
+     */
     public static byte[] insertLog(long xid, Page pg, byte[] raw) {
+        // 日志类型字节数组，表示这是一个插入日志
         byte[] logTypeRaw = {LOG_TYPE_INSERT};
+        // 将事务ID转换为字节数组
         byte[] xidRaw = Parser.long2Byte(xid);
+        // 将页面号转换为字节数组
         byte[] pgnoRaw = Parser.int2Byte(pg.getPageNumber());
+        // 将页面中的空闲空间偏移量转换为字节数组
         byte[] offsetRaw = Parser.short2Byte(PageX.getFSO(pg));
+        // 拼接所有字节数组，生成完整的插入日志
         return Bytes.concat(logTypeRaw, xidRaw, pgnoRaw, offsetRaw, raw);
     }
 
+    /**
+     * 解析插入日志信息
+     * 本方法从给定的字节数组中解析出插入日志的信息，并将其封装到InsertLogInfo对象中
+     * 解析过程涉及从字节数组的不同部分提取交易ID、页号、偏移量和原始数据
+     * 
+     * @param log 字节数组，包含插入日志的信息
+     * @return 返回一个InsertLogInfo对象，其中包含了解析出的日志信息
+     */
     private static InsertLogInfo parseInsertLog(byte[] log) {
+        // 创建一个InsertLogInfo对象来存储解析后的日志信息
         InsertLogInfo li = new InsertLogInfo();
+        
+        // 从log中提取交易ID(xid)，页号(pgno)，偏移量(offset)和原始数据(raw)
+        // 使用Arrays.copyOfRange方法从字节数组中提取特定范围的字节，并将其转换为相应的数据类型
         li.xid = Parser.parseLong(Arrays.copyOfRange(log, OF_XID, OF_INSERT_PGNO));
         li.pgno = Parser.parseInt(Arrays.copyOfRange(log, OF_INSERT_PGNO, OF_INSERT_OFFSET));
         li.offset = Parser.parseShort(Arrays.copyOfRange(log, OF_INSERT_OFFSET, OF_INSERT_RAW));
         li.raw = Arrays.copyOfRange(log, OF_INSERT_RAW, log.length);
+        
+        // 返回封装了日志信息的InsertLogInfo对象
         return li;
     }
 
+    /**
+     * 插入日志处理方法
+     * 该方法负责将日志信息插入到指定的页面中，并根据标志决定是否进行撤销操作
+     * 
+     * @param pc 页缓存对象，用于访问和管理页面
+     * @param log 日志数据，包含插入操作的相关信息
+     * @param flag 操作标志，用于指示是否需要进行撤销操作
+     */
     private static void doInsertLog(PageCache pc, byte[] log, int flag) {
+        // 解析插入日志，获取日志信息对象
         InsertLogInfo li = parseInsertLog(log);
+        // 初始化页面对象
         Page pg = null;
+        // 尝试获取指定编号的页面
         try {
             pg = pc.getPage(li.pgno);
         } catch(Exception e) {
             Panic.panic(e);
         }
+        // 执行插入日志的恢复操作
         try {
+            // 如果标志为撤销操作
             if(flag == UNDO) {
+                // 标记数据项为无效，准备撤销
                 DataItem.setDataItemRawInvalid(li.raw);
             }
+            // 调用页面恢复插入方法，根据日志信息恢复页面数据
             PageX.recoverInsert(pg, li.raw, li.offset);
         } finally {
+            // 释放页面资源，确保页面状态被正确更新
             pg.release();
         }
     }

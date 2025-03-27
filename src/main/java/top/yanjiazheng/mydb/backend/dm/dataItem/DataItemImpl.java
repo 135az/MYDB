@@ -45,6 +45,7 @@ public class DataItemImpl implements DataItem {
 
     @Override
     public SubArray data() {
+        // 返回 [data] 部分, 返回的是原始数据的引用，而不是数据的拷贝
         return new SubArray(raw.raw, raw.start+OF_DATA, raw.end);
     }
 
@@ -52,6 +53,7 @@ public class DataItemImpl implements DataItem {
     public void before() {
         wLock.lock();
         pg.setDirty(true);
+        // 保存原始数据的副本，以便在需要时进行回滚
         System.arraycopy(raw.raw, raw.start, oldRaw, 0, oldRaw.length);
     }
 

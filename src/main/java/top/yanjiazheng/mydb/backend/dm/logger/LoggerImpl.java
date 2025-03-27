@@ -16,11 +16,11 @@ import top.yanjiazheng.mydb.common.Error;
 
 /**
  * 日志文件读写
- * 
+ * <p> 
  * 日志文件标准格式为：
  * [XChecksum] [Log1] [Log2] ... [LogN] [BadTail]
  * XChecksum 为后续所有日志计算的Checksum，int类型
- * 
+ * <p> 
  * 每条正确日志的格式为：
  * [Size] [Checksum] [Data]
  * Size 4字节int 标识Data长度
@@ -80,7 +80,7 @@ public class LoggerImpl implements Logger {
         try {
             // 设置文件通道的位置到文件开始处
             fc.position(0);
-            // 从文件通道读取数据到缓冲区
+            // 读取文件头部的全局校验和
             fc.read(raw);
         } catch (IOException e) {
             Panic.panic(e);
@@ -180,9 +180,15 @@ public class LoggerImpl implements Logger {
         }
     }
 
+    /**
+    * 将数据解析成完整log
+    */
     private byte[] wrapLog(byte[] data) {
+        // 使用 calChecksum 方法计算数据的校验和，然后将校验和转换为字节数组
         byte[] checksum = Parser.int2Byte(calChecksum(0, data));
+        // 将数据的长度转换为字节数组
         byte[] size = Parser.int2Byte(data.length);
+        // 使用 Bytes.concat 方法将 size、checksum 和 data 连接成一个新的字节数组，然后返回这个字节数组
         return Bytes.concat(size, checksum, data);
     }
 
@@ -207,31 +213,34 @@ public class LoggerImpl implements Logger {
      * @return 下一个日志条目，如果到达文件末尾或校验和不匹配，则返回null
      */
     private byte[] internNext() {
-        // 检查当前文件位置是否接近文件末尾
+        // 检查当前位置是否已经超过了文件的大小，如果超过了，说明没有更多的日志可以读取，返回 null
         if(position + OF_DATA >= fileSize) {
             return null;
         }
         // 分配一个临时ByteBuffer用于读取日志条目的长度
         ByteBuffer tmp = ByteBuffer.allocate(4);
         try {
-            // 设置文件通道的位置并读取日志条目长度到临时缓冲区
+            // 将文件通道的位置设置为当前位置
             fc.position(position);
+            // 从文件通道中读取 4 个字节的数据到 ByteBuffer 中，即Size日志文件的大小
             fc.read(tmp);
         } catch(IOException e) {
             Panic.panic(e);
         }
-        // 解析日志条目的长度
+        // 使用 Parser.parseInt 方法将读取到的 4 个字节的数据转换为 int 类型，得到日志的大小
         int size = Parser.parseInt(tmp.array());
-        // 检查日志条目是否超出文件末尾
+        // 检查当前位置加上日志的大小是否超过了文件的大小，如果超过了，说明日志不完整，返回 null
         if(position + size + OF_DATA > fileSize) {
             return null;
         }
     
-        // 分配一个缓冲区用于读取整个日志条目
+        // 创建一个大小为 OF_DATA + size 的 ByteBuffer，用于读取完整的日志
         ByteBuffer buf = ByteBuffer.allocate(OF_DATA + size);
         try {
             // 重新设置文件通道的位置并读取整个日志条目到缓冲区
             fc.position(position);
+             // 从文件通道中读取 OF_DATA + size 个字节的数据到 ByteBuffer 中
+            // 读取整条日志 [Size][Checksum][Data]
             fc.read(buf);
         } catch(IOException e) {
             Panic.panic(e);
@@ -259,6 +268,7 @@ public class LoggerImpl implements Logger {
         try {
             byte[] log = internNext();
             if(log == null) return null;
+            // 返回日志文件 data
             return Arrays.copyOfRange(log, OF_DATA, log.length);
         } finally {
             lock.unlock();

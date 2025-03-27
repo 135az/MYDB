@@ -23,7 +23,9 @@ public class PageX {
         return raw;
     }
 
+    // 设置空闲空间偏移量
     private static void setFSO(byte[] raw, short ofData) {
+        // 将空闲空间偏移量的值复制到字节数组的指定位置
         System.arraycopy(Parser.short2Byte(ofData), 0, raw, OF_FREE, OF_DATA);
     }
 
@@ -49,13 +51,13 @@ public class PageX {
         // 将页面标记为已修改，表示页面数据已变更
         pg.setDirty(true);
         
-        // 获取页面中自由空间的起始偏移量
+        // 获取页面中空闲空间的起始偏移量
         short offset = getFSO(pg.getData());
         
-        // 将原始字节数组复制到页面数据的自由空间中
+        // 将raw的数据复制到pg的数据中的offset位置
         System.arraycopy(raw, 0, pg.getData(), offset, raw.length);
         
-        // 更新自由空间起始点位置，为下一次插入操作做准备
+        // 更新pg的空闲空间偏移量，为下一次插入操作做准备
         setFSO(pg.getData(), (short)(offset + raw.length));
         
         // 返回插入操作的起始位置
@@ -69,18 +71,25 @@ public class PageX {
 
     // 将raw插入pg中的offset位置，并将pg的offset设置为较大的offset
     public static void recoverInsert(Page pg, byte[] raw, short offset) {
+        // 将pg的dirty标志设置为true，表示pg的数据已经被修改
         pg.setDirty(true);
+        // 将raw的数据复制到pg的数据中的offset位置
         System.arraycopy(raw, 0, pg.getData(), offset, raw.length);
 
+        // 获取pg的当前空闲空间偏移量
         short rawFSO = getFSO(pg.getData());
+        // 如果当前的空闲空间偏移量小于offset + raw.length
         if(rawFSO < offset + raw.length) {
+            // 将pg的空闲空间偏移量设置为offset + raw.length
             setFSO(pg.getData(), (short)(offset+raw.length));
         }
     }
 
     // 将raw插入pg中的offset位置，不更新update
     public static void recoverUpdate(Page pg, byte[] raw, short offset) {
+        // 将pg的dirty标志设置为true，表示pg的数据已经被修改
         pg.setDirty(true);
+        // 将raw的数据复制到pg的数据中的offset位置
         System.arraycopy(raw, 0, pg.getData(), offset, raw.length);
     }
 }

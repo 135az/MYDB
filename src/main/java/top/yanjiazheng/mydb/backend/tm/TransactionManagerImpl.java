@@ -11,6 +11,8 @@ import top.yanjiazheng.mydb.backend.utils.Panic;
 import top.yanjiazheng.mydb.backend.utils.Parser;
 import top.yanjiazheng.mydb.common.Error;
 
+// 事务管理器通过一个 XID 文件存储事务状态，其结构如下：
+// [8字节XID计数器] [事务1状态] [事务2状态] ...
 public class TransactionManagerImpl implements TransactionManager {
 
     // XID文件头长度
@@ -78,6 +80,7 @@ public class TransactionManagerImpl implements TransactionManager {
     }
 
     // 根据事务xid取得其在xid文件中对应的位置
+    // 事务存储位置 = 8字节头部 + (xid-1) * 1字节状态
     private long getXidPosition(long xid) {
         return LEN_XID_HEADER_LENGTH + (xid-1)*XID_FIELD_SIZE;
     }

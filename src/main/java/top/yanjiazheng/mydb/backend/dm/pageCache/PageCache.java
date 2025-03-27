@@ -10,7 +10,7 @@ import top.yanjiazheng.mydb.backend.utils.Panic;
 import top.yanjiazheng.mydb.common.Error;
 
 public interface PageCache {
-    
+    // 每个页面的大小是 8192 字节（8KB）。
     int PAGE_SIZE = 1 << 13;
 
     int newPage(byte[] initData);
@@ -22,8 +22,8 @@ public interface PageCache {
     int getPageNumber();
     void flushPage(Page pg);
 
-    public static PageCacheImpl create(String path, long memory) {
-        File f = new File(path+PageCacheImpl.DB_SUFFIX);
+    static PageCacheImpl create(String path, long memory) {
+        File f = new File(path + PageCacheImpl.DB_SUFFIX);
         try {
             if(!f.createNewFile()) {
                 Panic.panic(Error.FileExistsException);
@@ -46,7 +46,7 @@ public interface PageCache {
         return new PageCacheImpl(raf, fc, (int)memory/PAGE_SIZE);
     }
 
-    public static PageCacheImpl open(String path, long memory) {
+    static PageCacheImpl open(String path, long memory) {
         File f = new File(path+PageCacheImpl.DB_SUFFIX);
         if(!f.exists()) {
             Panic.panic(Error.FileNotExistsException);
